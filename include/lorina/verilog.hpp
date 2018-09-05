@@ -78,6 +78,15 @@ public:
     (void)outputs;
   }
 
+  /*! \brief Callback method for parsed outputs.
+   *
+   * \param regs Register names
+   */
+  virtual void on_regs( const std::vector<std::string>& regs ) const
+  {
+    (void)regs;
+  }
+
   /*! \brief Callback method for parsed wires.
    *
    * \param wires Wire names
@@ -158,6 +167,19 @@ public:
   virtual void on_comment( std::string const& comment ) const
   {
     (void)comment;
+  }
+
+  /*! \brief Callback method for clock-driven assignments.
+   *
+   * \param edges posedge or negedge clock signals
+   * \param lhs Left-hand side of assignment
+   * \param rhs Right-hand side of assignment
+   */
+  virtual void on_clock_assign( const std::vector<std::pair<std::string, bool>>& edges, const std::string& lhs, const std::pair<std::string, bool>& rhs ) const
+  {
+    (void)edges;
+    (void)lhs;
+    (void)rhs;
   }
 
   /*! \brief Callback method for parsed endmodule.
@@ -287,6 +309,7 @@ namespace verilog_regex
 static std::regex immediate_assign( R"(^(~)?([[:alnum:]\[\]_']+)$)" );
 static std::regex binary_expression( R"(^(~)?([[:alnum:]\[\]_']+)([&|^])(~)?([[:alnum:]\[\]_']+)$)" );
 static std::regex maj3_expression( R"(^\((~)?([[:alnum:]\[\]_']+)&(~)?([[:alnum:]\[\]_']+)\)\|\((~)?([[:alnum:]\[\]_']+)&(~)?([[:alnum:]\[\]_']+)\)\|\((~)?([[:alnum:]\[\]_']+)&(~)?([[:alnum:]\[\]_']+)\)$)" );
+static std::regex clock_assign( R"(^([[:alnum:]\[\]_']+)(<=)(~)?([[:alnum:]\[\]_']+)$)" );
 } // namespace verilog_regex
 
 class verilog_parser
@@ -368,6 +391,18 @@ public:
           return false;
         }
       }
+      else if ( token == "reg" )
+      {
+        success = parse_regs();
+        if ( !success )
+        {
+          if ( diag )
+          {
+            diag->report( diagnostic_level::error, "cannot parse reg declaration" );
+          }
+          return false;
+        }
+      }
       else if ( token == "wire" )
       {
         success = parse_wires();
@@ -403,6 +438,21 @@ public:
       if ( !valid ) return false;
     }
 
+    if ( token == "always" )
+    {
+      success = parse_clock_assign();
+      if ( !success )
+      {
+        if ( diag )
+        {
+          diag->report( diagnostic_level::error, "cannot parse clock assign declaration" );
+        }
+        return false;
+      }
+
+      valid = get_token( token );
+      if ( !valid ) return false;
+    }
     if ( token == "endmodule" )
     {
       /* callback */
@@ -486,6 +536,27 @@ public:
 
     /* callback */
     reader.on_outputs( outputs );
+
+    return true;
+  }
+
+  bool parse_regs()
+  {
+    if ( token != "reg" ) return false;
+
+    std::vector<std::string> regs;
+    do
+    {
+      valid = get_token( token );
+      if ( !valid ) return false;
+      regs.push_back( token );
+
+      valid = get_token( token );
+      if ( !valid || (token != "," && token != ";") ) return false;
+    } while ( valid && token != ";" );
+
+    /* callback */
+    reader.on_regs( regs );
 
     return true;
   }
@@ -605,6 +676,61 @@ public:
     {
       return false;
     }
+
+    return true;
+  }
+
+  bool parse_clock_assign()
+  {
+    std::vector<std::pair<std::string,bool>> edges;
+    auto posedge = false;
+    do
+    {
+      valid = get_token( token );
+      if ( !valid ) return false;
+
+      if ( token == "always" || token == "@" || token == "(" || token == ")" || token == "begin" || token == "or" || token == "and" ) continue;
+
+      if ( token == "posedge" )
+      {
+        posedge = true;
+        continue;
+      }
+      else if ( token == "negedge" )
+      {
+        posedge = false;
+        continue;
+      }
+      edges.push_back( std::make_pair( token, posedge ) );
+
+    } while ( token != "begin" );
+
+    do
+    {
+      std::string s;
+      do
+      {
+        valid = get_token( token );
+        if ( !valid ) return false;
+
+        if ( token == ";" || token == "end" ) break;
+        s.append( token );
+      } while ( token != ";" );
+
+      std::smatch sm;
+      if ( std::regex_match( s, sm, verilog_regex::clock_assign ) )
+      {
+        assert( sm.size() == 5u );
+        std::string arg0 = sm[1];
+        std::pair<std::string,bool> arg1 = {sm[4], sm[3] == "~"};
+        reader.on_clock_assign( edges, arg0, arg1 );
+      }
+      else
+      {
+        return false;
+      }
+
+    } while ( token != "end" );
 
     return true;
   }
