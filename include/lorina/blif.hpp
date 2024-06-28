@@ -197,7 +197,7 @@ public:
  * @param liv Latch init value.
  * @return Underlying value of latch_init_value.
  */
-inline auto format_as( blif_reader::latch_init_value liv ) { return fmt::underlying( liv ); }
+[[maybe_unused]] inline auto format_as( blif_reader::latch_init_value liv ) { return fmt::underlying( liv ); }
 /*!
  * \brief Format a latch_type as string.
  *
@@ -206,7 +206,7 @@ inline auto format_as( blif_reader::latch_init_value liv ) { return fmt::underly
  * @param lt Latch type.
  * @return Underlying value of latch_type.
  */
-inline auto format_as( blif_reader::latch_type lt ) { return fmt::underlying( lt ); }
+[[maybe_unused]] inline auto format_as( blif_reader::latch_type lt ) { return fmt::underlying( lt ); }
 /*! \brief A BLIF reader for prettyprinting BLIF.
  *
  * Callbacks for prettyprinting of BLIF.
